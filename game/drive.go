@@ -139,12 +139,12 @@ func (drive *Drive) newCarModel() *CarModel {
 	const BASE_LENGTH = 4.4
 	var BASE_COLOR = math32.NewColorHex(0x10C010)
 	const WHEEL_RADIUS = 0.5
-	const WHEEL_WIDTH = (BASE_WIDTH / 2) * 0.9
-	var WHEEL_COLOR = math32.NewColorHex(0x808080)
+	const WHEEL_WIDTH = (BASE_WIDTH / 2) * 0.2
+	var WHEEL_COLOR = math32.NewColorHex(0x5706a5)
 	const EMBED = 0.5
 	const CAP_RADIUS = WHEEL_RADIUS - 0.1
 	const CAP_DZ = 0.01
-	var CAP_COLOR = math32.NewColorHex(0x707070)
+	var CAP_COLOR = math32.NewColorHex(0xA52A2A)
 
 	model := new(CarModel)
 	model.node = core.NewNode()
@@ -159,41 +159,72 @@ func (drive *Drive) newCarModel() *CarModel {
 	matCap := material.NewStandard(CAP_COLOR)
 	// matCap.AddTexture(tex)
 	var zWheel float32 = BASE_WIDTH/2 - WHEEL_WIDTH/2 - 0.1
-	for wheelN := 0; wheelN < 2; wheelN++ {
-		for sideN := 0; sideN < 2; sideN++ {
-			// Creates wheel mesh
-			geomWheel := geometry.NewCylinder(WHEEL_RADIUS, WHEEL_WIDTH+EPS, 20, 20, true, true)
-			meshWheel := graphic.NewMesh(geomWheel, matWheel)
-			var zdir float32 = 1.0
-			if sideN%2 == 0 {
-				zdir = -1.0
-			}
-			meshWheel.SetPosition(
-				-(BASE_LENGTH)+WHEEL_RADIUS+0.2+float32(wheelN)*(WHEEL_RADIUS*2),
-				WHEEL_RADIUS,
-				zdir*zWheel,
-			)
-			meshWheel.SetRotationX(math32.Pi / 2)
-			model.node.Add(meshWheel)
-
-			// Creates wheel cap
-			geomCap := geometry.NewDisk(CAP_RADIUS, 20)
-			meshCap := graphic.NewMesh(geomCap, matCap)
-			meshCap.SetPositionX(-(BASE_LENGTH / 2) + WHEEL_RADIUS + 0.2 + float32(wheelN)*(WHEEL_RADIUS*2))
-			meshCap.SetPositionY(WHEEL_RADIUS)
-			zWheelCap := zWheel + WHEEL_WIDTH/2 + CAP_DZ
-			if sideN%2 != 0 {
-				meshCap.SetPositionZ(zWheelCap)
-			} else {
-				meshCap.SetPositionZ(-zWheelCap)
-			}
-			// Rotate the wheel cap circle geometry
-			if sideN%2 == 0 {
-				geomCap.ApplyMatrix(math32.NewMatrix4().MakeRotationX(-math32.Pi))
-			}
-			model.caps = append(model.caps, meshCap)
-			model.node.Add(meshCap)
+	// Create front wheels
+	for sideN := 0; sideN < 2; sideN++ {
+		geomWheel := geometry.NewCylinder(WHEEL_RADIUS, WHEEL_WIDTH+EPS, 20, 20, true, true)
+		meshWheel := graphic.NewMesh(geomWheel, matWheel)
+		var zdir float32 = 1.0
+		if sideN%2 == 0 {
+			zdir = -1.0
 		}
+		meshWheel.SetPosition(
+			BASE_LENGTH/2-WHEEL_RADIUS,
+			WHEEL_RADIUS,
+			zdir*zWheel,
+		)
+		meshWheel.SetRotationX(math32.Pi / 2)
+		model.node.Add(meshWheel)
+		// Add cap
+		geomCap := geometry.NewDisk(CAP_RADIUS, 20)
+		meshCap := graphic.NewMesh(geomCap, matCap)
+		meshCap.SetPositionX(BASE_LENGTH/2 - WHEEL_RADIUS)
+		meshCap.SetPositionY(WHEEL_RADIUS)
+		zWheelCap := zWheel + WHEEL_WIDTH/2 + CAP_DZ
+		if sideN%2 != 0 {
+			meshCap.SetPositionZ(zWheelCap)
+		} else {
+			meshCap.SetPositionZ(-zWheelCap)
+		}
+		// Rotate the wheel cap circle geometry
+		if sideN%2 == 0 {
+			geomCap.ApplyMatrix(math32.NewMatrix4().MakeRotationX(-math32.Pi))
+		}
+		model.caps = append(model.caps, meshCap)
+		model.node.Add(meshCap)
+
+	}
+	// Create back wheels
+	for sideN := 0; sideN < 2; sideN++ {
+		geomWheel := geometry.NewCylinder(WHEEL_RADIUS, WHEEL_WIDTH+EPS, 20, 20, true, true)
+		meshWheel := graphic.NewMesh(geomWheel, matWheel)
+		var zdir float32 = 1.0
+		if sideN%2 == 0 {
+			zdir = -1.0
+		}
+		meshWheel.SetPosition(
+			-(BASE_LENGTH/2)+WHEEL_RADIUS,
+			WHEEL_RADIUS,
+			zdir*zWheel,
+		)
+		meshWheel.SetRotationX(math32.Pi / 2)
+		model.node.Add(meshWheel)
+		// Add cap
+		geomCap := geometry.NewDisk(CAP_RADIUS, 20)
+		meshCap := graphic.NewMesh(geomCap, matCap)
+		meshCap.SetPositionX(-(BASE_LENGTH / 2) + WHEEL_RADIUS)
+		meshCap.SetPositionY(WHEEL_RADIUS)
+		zWheelCap := zWheel + WHEEL_WIDTH/2 + CAP_DZ
+		if sideN%2 != 0 {
+			meshCap.SetPositionZ(zWheelCap)
+		} else {
+			meshCap.SetPositionZ(-zWheelCap)
+		}
+		// Rotate the wheel cap circle geometry
+		if sideN%2 == 0 {
+			geomCap.ApplyMatrix(math32.NewMatrix4().MakeRotationX(-math32.Pi))
+		}
+		model.caps = append(model.caps, meshCap)
+		model.node.Add(meshCap)
 	}
 
 	// Create the car chassis and add it to the group
