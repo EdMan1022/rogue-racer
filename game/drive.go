@@ -75,6 +75,7 @@ func (drive *Drive) Update(game *Game, deltaTime time.Duration) {
 	if drive.commands[CMD_BACKWARD] {
 		x_velocity_delta := drive.x_decceleration * float32(deltaTime.Seconds())
 		drive.x_velocity = drive.x_velocity - x_velocity_delta
+		drive.x_velocity = math32.Max(drive.x_velocity, 0.0)
 	}
 
 	// Calculates distance to move
