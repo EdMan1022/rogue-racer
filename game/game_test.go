@@ -2,9 +2,9 @@ package game
 
 import "testing"
 
-func TestHello(t *testing.T) {
-	want := "Hello, World!"
-	if got := Hello(); got != want {
-		t.Errorf("Hello() = %q, want %q", got, want)
+func TestGame(t *testing.T) {
+	want := "Rogue Racer"
+	if got := Create(); got.name != want {
+		t.Errorf("Hello() = %q, want %q", got.name, want)
 	}
 }
