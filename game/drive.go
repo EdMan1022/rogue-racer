@@ -23,11 +23,13 @@ const (
 )
 
 type Drive struct {
-	game       *Game
-	x_velocity float32        // linear velocity in x direction (m/s)
-	z_velocity float32        // linear velocity in z direction (m/s)
-	model      *CarModel      // car model
-	commands   [CMD_LAST]bool // commands states
+	game            *Game
+	x_velocity      float32        // linear velocity in x direction (m/s)
+	x_acceleration  float32        // acceleration value for the x direction (m/s^2)
+	x_decceleration float32        // Negative acceleration value for the x direction, car should brake differently than accelerating (m/s^2)
+	z_velocity      float32        // linear velocity in z direction (m/s)
+	model           *CarModel      // car model
+	commands        [CMD_LAST]bool // commands states
 }
 
 // Start is called once at the start of a drive
@@ -52,8 +54,10 @@ func (drive *Drive) Start(game *Game) {
 
 	// Creates car model
 	drive.model = drive.newCarModel()
-	drive.x_velocity = 5.0
-	drive.z_velocity = 1.0
+	drive.x_acceleration = 5.0
+	drive.x_decceleration = 10.0
+	drive.x_velocity = 0.0
+	drive.z_velocity = 0.0
 	game.Scene().Add(drive.model.node)
 
 	// Subscribes game to keyboard events
@@ -63,33 +67,36 @@ func (drive *Drive) Start(game *Game) {
 
 // Update is called to update the physics every frame
 func (drive *Drive) Update(game *Game, deltaTime time.Duration) {
-	if drive.commands[CMD_FORWARD] || drive.commands[CMD_BACKWARD] {
-		// Calculates distance to move
-		x_dist := drive.x_velocity * float32(deltaTime.Seconds())
-		// Calculates wheel rotation
-		var wheelRotation = -x_dist / 0.5
 
-		// Get car world direction
-		var quat math32.Quaternion
-		drive.model.node.WorldQuaternion(&quat)
-		direction := math32.Vector3{1, 0, 0}
-		direction.ApplyQuaternion(&quat)
-		direction.Normalize()
-		direction.MultiplyScalar(x_dist)
-		// Just reverse everything if going backwards
-		if drive.commands[CMD_BACKWARD] {
-			direction.Negate()
-			wheelRotation = -wheelRotation
-		}
-		// Get car world position
-		var position math32.Vector3
-		drive.model.node.WorldPosition(&position)
-		position.Add(&direction)
-		drive.model.node.SetPositionVec(&position)
-		// Rotate the wheel caps
-		for _, wcap := range drive.model.caps {
-			wcap.RotateZ(wheelRotation)
-		}
+	if drive.commands[CMD_FORWARD] {
+		x_velocity_delta := drive.x_acceleration * float32(deltaTime.Seconds())
+		drive.x_velocity = drive.x_velocity + x_velocity_delta
+	}
+	if drive.commands[CMD_BACKWARD] {
+		x_velocity_delta := drive.x_decceleration * float32(deltaTime.Seconds())
+		drive.x_velocity = drive.x_velocity - x_velocity_delta
+	}
+
+	// Calculates distance to move
+	x_dist := drive.x_velocity * float32(deltaTime.Seconds())
+	// Calculates wheel rotation
+	var wheelRotation = -x_dist / 0.5
+
+	// Get car world direction
+	var quat math32.Quaternion
+	drive.model.node.WorldQuaternion(&quat)
+	direction := math32.Vector3{1, 0, 0}
+	direction.ApplyQuaternion(&quat)
+	direction.Normalize()
+	direction.MultiplyScalar(x_dist)
+	// Get car world position
+	var position math32.Vector3
+	drive.model.node.WorldPosition(&position)
+	position.Add(&direction)
+	drive.model.node.SetPositionVec(&position)
+	// Rotate the wheel caps
+	for _, wcap := range drive.model.caps {
+		wcap.RotateZ(wheelRotation)
 	}
 }
 
