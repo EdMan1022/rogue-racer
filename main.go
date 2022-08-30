@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/EdMan1022/rogue-racer/game"
+	"github.com/EdMan1022/rogue-racer/rogue_racer/drive"
+	"github.com/EdMan1022/rogue-racer/rogue_racer/game"
 )
 
 func main() {
 
 	// Create and run game
-	game.Create().Run()
+	game.Create(&drive.Drive{}).Run()
 }
