@@ -244,58 +244,65 @@ func (drive *Drive) newCarModel() *CarModel {
 	return model
 }
 
-type Motor interface {
-	changeThrottlePosition(float32)
-	getOutputTorque() float32
-	giveNegativeTorque(float32)
-	Update(*game.GameMode)
-	getEnginePower() float32
+type Engine interface {
+	updateThrottlePosition(float64)
+	getOutputTorque() float64
+	inputNetTorque(float64)
 }
 
 type GasEngine struct {
-	cylinders        int32
-	displacement     float32
-	horsepower       int32
-	rpm              int32
-	throttlePosition float32
-	angularMomentum  float64
-	peakRpm          float32
-	peakPower        float32
+	torqueCurve     map[int]float64
+	momentOfInertia float64
+
+	throttlePosition    float64
+	throttlePercent     float64 // Actual throttle is different from the user input based on a throttle map
+	angularPosition     float64 // Degrees
+	angularVelocity     float64 // Degrees per second
+	angularAcceleration float64 // Degrees per second squared
 }
 
-func (gasEngine *GasEngine) changeThrottlePosition(input float32) {
+func (gasEngine *GasEngine) updateThrottlePosition(input float64) {
 	gasEngine.throttlePosition = input
+	gasEngine.throttlePercent = input
 }
 
-func (gasEngine *GasEngine) getOutputTorque() float32 {
-	return 0.0
+func (gasEngine *GasEngine) getOutputTorque() float64 {
+	rpm := gasEngine.angularVelocity / 6 // RPM is just angular velocity (in degrees per second) / 6
+	return gasEngine.torqueCurve[int(rpm)] * gasEngine.throttlePercent
 }
 
-func (gasEngine *GasEngine) giveNegativeTorque(float32) {
-
+func (gasEngine *GasEngine) inputNetTorque(netTorque float64) {
+	gasEngine.angularAcceleration = netTorque / gasEngine.momentOfInertia
 }
-
-func (gasEngine *GasEngine) getEnginePower() float64 {
-	throttleModifier := 1. / (1. + math.Exp(float64(8*(gasEngine.throttlePosition-0.5))))
-	return 0.05 * float64(gasEngine.rpm) * throttleModifier
-}
-
-func (gasEngine *GasEngine) Update() {}
 
 func (drive *Drive) NewGasEngine() *GasEngine {
 	engine := new(GasEngine)
-	engine.cylinders = 8
-	engine.displacement = 4.6
-	engine.horsepower = 320
-	engine.rpm = 0
 	engine.throttlePosition = 0
+	engine.throttlePercent = 0
+	engine.angularAcceleration = 0
+	engine.angularVelocity = 0
+	engine.angularPosition = 0
 
 	crankInertiaCoefficient := 1.1
 	flywheelMass := 13.
 	flywheelRadius := .144
 	clutchMass := 11.
 	clutchRadius := .14
-	engine.angularMomentum = crankInertiaCoefficient*.5*(flywheelMass*math.Pow(2, flywheelRadius)) + (clutchMass * math.Pow(2, clutchRadius))
+	engine.momentOfInertia = crankInertiaCoefficient*.5*(flywheelMass*math.Pow(2, flywheelRadius)) + (clutchMass * math.Pow(2, clutchRadius))
+
+	engine.torqueCurve = make(map[int]float64)
+
+	//TODO get torque curve from a file here or something, this is super hard coded
+	peakTorque := 400.
+	for i := 1; i <= 2000; i++ {
+		engine.torqueCurve[i] = float64(i) / 2000 * peakTorque
+	}
+	for i := 2001; i <= 5000; i++ {
+		engine.torqueCurve[i] = peakTorque
+	}
+	for i := 5001; i <= 8000; i++ {
+		engine.torqueCurve[i] = -.066*float64(i) + 733.33
+	}
 
 	return engine
 }
