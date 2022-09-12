@@ -1,6 +1,7 @@
 package drive
 
 import (
+	"math"
 	"time"
 
 	"github.com/EdMan1022/rogue-racer/rogue_racer/game"
@@ -242,3 +243,71 @@ func (drive *Drive) newCarModel() *CarModel {
 	model.node.Add(model.meshBase)
 	return model
 }
+
+type Motor interface {
+	changeThrottlePosition(float32)
+	getOutputTorque() float32
+	giveNegativeTorque(float32)
+	Update(*game.GameMode)
+	getEnginePower() float32
+}
+
+type GasEngine struct {
+	cylinders        int32
+	displacement     float32
+	horsepower       int32
+	rpm              int32
+	throttlePosition float32
+	angularMomentum  float64
+	peakRpm          float32
+	peakPower        float32
+}
+
+func (gasEngine *GasEngine) changeThrottlePosition(input float32) {
+	gasEngine.throttlePosition = input
+}
+
+func (gasEngine *GasEngine) getOutputTorque() float32 {
+	return 0.0
+}
+
+func (gasEngine *GasEngine) giveNegativeTorque(float32) {
+
+}
+
+func (gasEngine *GasEngine) getEnginePower() float64 {
+	throttleModifier := 1. / (1. + math.Exp(float64(8*(gasEngine.throttlePosition-0.5))))
+	return 0.05 * float64(gasEngine.rpm) * throttleModifier
+}
+
+func (gasEngine *GasEngine) Update() {}
+
+func (drive *Drive) NewGasEngine() *GasEngine {
+	engine := new(GasEngine)
+	engine.cylinders = 8
+	engine.displacement = 4.6
+	engine.horsepower = 320
+	engine.rpm = 0
+	engine.throttlePosition = 0
+
+	crankInertiaCoefficient := 1.1
+	flywheelMass := 13.
+	flywheelRadius := .144
+	clutchMass := 11.
+	clutchRadius := .14
+	engine.angularMomentum = crankInertiaCoefficient*.5*(flywheelMass*math.Pow(2, flywheelRadius)) + (clutchMass * math.Pow(2, clutchRadius))
+
+	return engine
+}
+
+// Process user inputs;
+// Update engine throttle position based on throttle input value
+// Update brake pressure based on brake input value
+// Update steering rack input based on steering input value
+
+// Calculate single step of the physics simulation
+// Get current output torque from engine
+// Calculate torque through transmission to each wheel
+// Calculate whether wheels slip or not
+// Send back torque to engine (based on wheel slip)
+// Calculate engine RPM change
