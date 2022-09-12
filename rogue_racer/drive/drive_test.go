@@ -44,3 +44,32 @@ func TestInputNetTorque(t *testing.T) {
 	}
 
 }
+
+func TestTransmissionShiftUp(t *testing.T) {
+	drive := &Drive{}
+	transmission := drive.NewTransmission()
+	transmission.currentGear = 1
+	transmission.shiftUp()
+	if transmission.currentGear != 2 {
+		t.Errorf("transmission didn't shift correctly")
+	}
+}
+func TestShiftTooHigh(t *testing.T) {
+	drive := &Drive{}
+	transmission := drive.NewTransmission()
+	transmission.currentGear = 5
+	transmission.shiftUp()
+	output := transmission.currentRatio()
+	if output != .67 {
+		t.Errorf("Shouldn't be able to shift past 5")
+	}
+}
+
+func TestTransmissionCurrentRatio(t *testing.T) {
+	drive := &Drive{}
+	transmission := drive.NewTransmission()
+	transmission.currentGear = 1
+	if transmission.currentRatio() != 3.38 {
+		t.Errorf("transmission not providing correct gear ratio")
+	}
+}

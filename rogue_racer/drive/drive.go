@@ -318,3 +318,45 @@ func (drive *Drive) NewGasEngine() *GasEngine {
 // Calculate whether wheels slip or not
 // Send back torque to engine (based on wheel slip)
 // Calculate engine RPM change
+
+type Transmission interface {
+	shiftUp()
+	shiftDown()
+	shiftToGear(int)
+	currentRatio() float64
+}
+
+type ManualTransmission struct {
+	gearRatios  map[int]float64
+	currentGear int
+}
+
+func (drive *Drive) NewTransmission() *ManualTransmission {
+	manualTransmission := new(ManualTransmission)
+	manualTransmission.currentGear = 1
+	manualTransmission.gearRatios = make(map[int]float64)
+	manualTransmission.gearRatios[1] = 3.38
+	manualTransmission.gearRatios[2] = 1.99
+	manualTransmission.gearRatios[3] = 1.32
+	manualTransmission.gearRatios[4] = 1.0
+	manualTransmission.gearRatios[5] = .67
+	manualTransmission.gearRatios[-1] = 3.38
+
+	return manualTransmission
+}
+
+func (transmission *ManualTransmission) shiftUp() {
+	transmission.currentGear += 1
+}
+
+func (transmission *ManualTransmission) shiftDown() {
+	transmission.currentGear -= 1
+}
+
+func (transmission *ManualTransmission) shiftToGear(inputGear int) {
+	transmission.currentGear = inputGear
+}
+
+func (transmission *ManualTransmission) currentRatio() float64 {
+	return transmission.gearRatios[transmission.currentGear]
+}
