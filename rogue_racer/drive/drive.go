@@ -335,6 +335,7 @@ func (drive *Drive) NewTransmission() *ManualTransmission {
 	manualTransmission := new(ManualTransmission)
 	manualTransmission.currentGear = 1
 	manualTransmission.gearRatios = make(map[int]float64)
+	manualTransmission.gearRatios[0] = 0.
 	manualTransmission.gearRatios[1] = 3.38
 	manualTransmission.gearRatios[2] = 1.99
 	manualTransmission.gearRatios[3] = 1.32
@@ -359,4 +360,34 @@ func (transmission *ManualTransmission) shiftToGear(inputGear int) {
 
 func (transmission *ManualTransmission) currentRatio() float64 {
 	return transmission.gearRatios[transmission.currentGear]
+}
+
+type DriveLine interface {
+	torqueToWheels(float64) map[int]float64
+}
+
+type OpenDiff struct {
+	defaultTorqueSplit map[int]float64
+	finalDriveRatio    float64
+}
+
+func (openDiff *OpenDiff) torqueToWheels(inputTorque float64) map[int]float64 {
+	outputTorqueSplit := make(map[int]float64)
+	outputTorqueSplit[0] = inputTorque * openDiff.defaultTorqueSplit[0]
+	outputTorqueSplit[1] = inputTorque * openDiff.defaultTorqueSplit[1]
+	outputTorqueSplit[2] = inputTorque * openDiff.defaultTorqueSplit[2]
+	outputTorqueSplit[3] = inputTorque * openDiff.defaultTorqueSplit[3]
+
+	return outputTorqueSplit
+}
+
+func (drive *Drive) NewOpenDiff() *OpenDiff {
+	openDiff := new(OpenDiff)
+	openDiff.finalDriveRatio = 3.27
+	openDiff.defaultTorqueSplit = make(map[int]float64)
+	openDiff.defaultTorqueSplit[0] = 0.
+	openDiff.defaultTorqueSplit[1] = 0.
+	openDiff.defaultTorqueSplit[2] = 0.5
+	openDiff.defaultTorqueSplit[3] = 0.5
+	return openDiff
 }

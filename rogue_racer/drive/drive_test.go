@@ -73,3 +73,15 @@ func TestTransmissionCurrentRatio(t *testing.T) {
 		t.Errorf("transmission not providing correct gear ratio")
 	}
 }
+
+func TestOpenDiffTorqueSplit(t *testing.T) {
+	drive := &Drive{}
+	diff := drive.NewOpenDiff()
+	torqueSplit := diff.torqueToWheels(100.)
+	if torqueSplit[0] != 0. || torqueSplit[1] != 0. {
+		t.Errorf("Rear Wheel Drive shouldn't send torque to either front wheel")
+	}
+	if torqueSplit[2] != 50. || torqueSplit[3] != 50. {
+		t.Errorf("Torque should be split evenly between rear wheels. Left Rear: %f Nm, Right Rear: %f Nm", torqueSplit[2], torqueSplit[3])
+	}
+}
