@@ -17,6 +17,19 @@ func TestEngine(t *testing.T) {
 	}
 }
 
+func TestEngineThrottlePosition(t *testing.T) {
+	drive := &Drive{}
+	engine := drive.NewGasEngine()
+	engine.angularVelocity = 24000.
+
+	engine.updateThrottlePosition(.5)
+
+	if engine.getOutputTorque() != 200. {
+		t.Errorf("Incorrect torque, at half throttle should be 200 Nm, got %f Nm", engine.getOutputTorque())
+	}
+
+}
+
 func TestOutputTorque(t *testing.T) {
 	drive := &Drive{}
 	engine := drive.NewGasEngine()
@@ -84,4 +97,42 @@ func TestOpenDiffTorqueSplit(t *testing.T) {
 	if torqueSplit[2] != 50. || torqueSplit[3] != 50. {
 		t.Errorf("Torque should be split evenly between rear wheels. Left Rear: %f Nm, Right Rear: %f Nm", torqueSplit[2], torqueSplit[3])
 	}
+}
+
+func TestCreateWheels(t *testing.T) {
+	drive := &Drive{}
+	wheel1 := drive.NewWheel()
+	wheel1.updateNormalForce(10.)
+
+	wheel2 := drive.NewWheel()
+	wheel2.updateNormalForce(5.)
+
+	if wheel1.normalForce == wheel2.normalForce {
+		t.Errorf("Wheels should have different normal forces")
+	}
+
+}
+
+// A change in normal force on a wheel should change the contact patch
+func TestWheelNormalForce(t *testing.T) {
+	drive := &Drive{}
+	wheel := drive.NewWheel()
+	wheel.updateNormalForce(10.)
+
+	if wheel.contactPatch != 5. {
+		t.Errorf("Contact patch not updated correctly")
+	}
+
+}
+
+// Test that the maximum torque provided by the wheel is correct
+func TestWheelMaxTorque(t *testing.T) {
+	drive := &Drive{}
+	wheel := drive.NewWheel()
+
+	wheel.updateNormalForce(10.)
+	if wheel.getMaxTorque() != 3.2600000000000002 {
+		t.Errorf("Wheel not calculating friction correctly: %f", wheel.getMaxTorque())
+	}
+
 }

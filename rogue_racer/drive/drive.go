@@ -391,3 +391,51 @@ func (drive *Drive) NewOpenDiff() *OpenDiff {
 	openDiff.defaultTorqueSplit[3] = 0.5
 	return openDiff
 }
+
+type Wheel interface {
+	updateNormalForce(float64)
+	getMaxTorque() float64
+}
+
+type RubberWheel struct {
+	radius float64
+	width  float64
+	// Variables
+	normalForce                  float64 // Newtons
+	frictionCoefficient          float64
+	rollingResistanceCoefficient float64
+	pressure                     float64 //Pascals
+	temperature                  float64 //Kelvin
+	momentOfInertia              float64
+	angularPosition              float64
+	angularVelocity              float64
+	angularAcceleration          float64
+	contactPatch                 float64
+}
+
+func (drive *Drive) NewWheel() *RubberWheel {
+	wheel := new(RubberWheel)
+	wheel.radius = .326
+	wheel.width = .245
+	wheel.normalForce = 0.
+	wheel.frictionCoefficient = 1.
+	wheel.rollingResistanceCoefficient = .014
+	wheel.pressure = 220632.
+	wheel.temperature = 300.
+	wheel.momentOfInertia = 1.
+	wheel.angularPosition = 0.
+	wheel.angularVelocity = 0.
+	wheel.angularAcceleration = 0.
+	wheel.contactPatch = 0.
+
+	return wheel
+}
+
+func (wheel *RubberWheel) getMaxTorque() float64 {
+	return (wheel.frictionCoefficient * wheel.normalForce) * wheel.radius
+}
+
+func (wheel *RubberWheel) updateNormalForce(inputForce float64) {
+	wheel.normalForce = inputForce
+	wheel.contactPatch = wheel.width * .001
+}
