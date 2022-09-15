@@ -114,7 +114,7 @@ func TestCreateWheels(t *testing.T) {
 }
 
 // A change in normal force on a wheel should change the contact patch
-func TestWheelNormalForce(t *testing.T) {
+func TestUpdateWheelNormalForce(t *testing.T) {
 	drive := &Drive{}
 	wheel := drive.NewWheel()
 	wheel.updateNormalForce(10.)
@@ -133,6 +133,31 @@ func TestWheelMaxTorque(t *testing.T) {
 	wheel.updateNormalForce(10.)
 	if wheel.getMaxTorque() != 3.2600000000000002 {
 		t.Errorf("Wheel not calculating friction correctly: %f", wheel.getMaxTorque())
+	}
+
+}
+
+func TestDragForce(t *testing.T) {
+	drive := &Drive{}
+	car := drive.NewCarBody()
+	car.netVelocity = 1.
+	expectedDrag := .171500
+	if car.dragForce() != expectedDrag {
+		t.Errorf("Not calculating drag correctly\nExpected: %f\nActual: %f", expectedDrag, car.dragForce())
+	}
+}
+
+func TestCarNormalForce(t *testing.T) {
+	drive := &Drive{}
+	car := drive.NewCarBody()
+	actualNormalForce := car.normalForce()
+	expectedNormalForce := make(map[int]float64)
+	expectedNormalForce[0] = 4201.75
+	expectedNormalForce[1] = 4201.75
+	expectedNormalForce[2] = 4201.75
+	expectedNormalForce[3] = 4201.75
+	if actualNormalForce[0] != expectedNormalForce[0] {
+		t.Errorf("Not getting normal force correctly\nExpected: %f\nActual: %f", expectedNormalForce[0], actualNormalForce[0])
 	}
 
 }

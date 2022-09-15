@@ -288,7 +288,7 @@ func (drive *Drive) NewGasEngine() *GasEngine {
 	flywheelRadius := .144
 	clutchMass := 11.
 	clutchRadius := .14
-	engine.momentOfInertia = crankInertiaCoefficient*.5*(flywheelMass*math.Pow(2, flywheelRadius)) + (clutchMass * math.Pow(2, clutchRadius))
+	engine.momentOfInertia = crankInertiaCoefficient*.5*(flywheelMass*math.Pow(flywheelRadius, 2)) + (clutchMass * math.Pow(clutchRadius, 2))
 
 	engine.torqueCurve = make(map[int]float64)
 
@@ -438,4 +438,69 @@ func (wheel *RubberWheel) getMaxTorque() float64 {
 func (wheel *RubberWheel) updateNormalForce(inputForce float64) {
 	wheel.normalForce = inputForce
 	wheel.contactPatch = wheel.width * .001
+}
+
+type CarBody interface {
+	dragForce() float64
+	normalForce() map[int]float64
+}
+
+type SedanBody struct {
+	frontalArea        float64
+	dragCoefficient    float64
+	fluidDensity       float64
+	mass               float64
+	weightDistribution map[int]float64
+
+	xPosition           float64
+	xVelocity           float64
+	xAcceleration       float64
+	yPosition           float64
+	yVelocity           float64
+	yAcceleration       float64
+	netVelocity         float64
+	angularPosition     float64
+	angularVelocity     float64
+	angularAcceleration float64
+}
+
+func (drive *Drive) NewCarBody() *SedanBody {
+	carBody := new(SedanBody)
+	carBody.frontalArea = 1.
+	carBody.dragCoefficient = .28
+	carBody.mass = 1715.
+	carBody.fluidDensity = 1.225
+	carBody.weightDistribution = make(map[int]float64)
+	carBody.weightDistribution[0] = .25
+	carBody.weightDistribution[1] = .25
+	carBody.weightDistribution[2] = .25
+	carBody.weightDistribution[3] = .25
+
+	carBody.xPosition = 0.
+	carBody.xVelocity = 0.
+	carBody.xAcceleration = 0.
+	carBody.yPosition = 0.
+	carBody.yVelocity = 0.
+	carBody.yAcceleration = 0.
+	carBody.netVelocity = 0.
+
+	carBody.angularPosition = 0.
+	carBody.angularVelocity = 0.
+	carBody.angularAcceleration = 0.
+
+	return carBody
+
+}
+
+func (carBody *SedanBody) dragForce() float64 {
+	return .5 * carBody.fluidDensity * math.Pow(carBody.netVelocity, 2) * carBody.dragCoefficient * carBody.frontalArea
+}
+
+func (carBody *SedanBody) normalForce() map[int]float64 {
+	normalForceAtWheels := make(map[int]float64)
+	normalForceAtWheels[0] = carBody.mass * 9.8 * carBody.weightDistribution[0]
+	normalForceAtWheels[1] = carBody.mass * 9.8 * carBody.weightDistribution[1]
+	normalForceAtWheels[2] = carBody.mass * 9.8 * carBody.weightDistribution[2]
+	normalForceAtWheels[3] = carBody.mass * 9.8 * carBody.weightDistribution[3]
+	return normalForceAtWheels
 }
