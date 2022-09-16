@@ -25,13 +25,14 @@ const (
 )
 
 type Drive struct {
-	game            *game.Game
-	x_velocity      float32        // linear velocity in x direction (m/s)
-	x_acceleration  float32        // acceleration value for the x direction (m/s^2)
-	x_decceleration float32        // Negative acceleration value for the x direction, car should brake differently than accelerating (m/s^2)
-	z_velocity      float32        // linear velocity in z direction (m/s)
-	model           *CarModel      // car model
-	commands        [CMD_LAST]bool // commands states
+	game         *game.Game
+	model        *CarModel // car model
+	engine       Engine
+	transmission Transmission
+	wheels       map[int]Wheel
+	driveLine    DriveLine
+	carBody      CarBody
+	commands     [CMD_LAST]bool // commands states
 }
 
 // Start is called once at the start of a drive
@@ -54,12 +55,18 @@ func (drive *Drive) Start(game *game.Game) {
 	game.Camera().UpdateSize(pos.Length())
 	game.Camera().LookAt(&math32.Vector3{0, 0, 0}, &math32.Vector3{0, 1, 0})
 
+	drive.engine = drive.NewGasEngine()
+	drive.transmission = drive.NewTransmission()
+	drive.transmission.shiftToGear(2)
+	drive.wheels = make(map[int]Wheel)
+	for i := 0; i < 4; i++ {
+		drive.wheels[i] = drive.NewWheel()
+	}
+	drive.driveLine = drive.NewOpenDiff()
+	drive.carBody = drive.NewCarBody()
+
 	// Creates car model
 	drive.model = drive.newCarModel()
-	drive.x_acceleration = 5.0
-	drive.x_decceleration = 10.0
-	drive.x_velocity = 0.0
-	drive.z_velocity = 0.0
 	game.Scene().Add(drive.model.node)
 
 	// Subscribes game to keyboard events
@@ -70,18 +77,87 @@ func (drive *Drive) Start(game *game.Game) {
 // Update is called to update the physics every frame
 func (drive *Drive) Update(game *game.Game, deltaTime time.Duration) {
 
+	// Handle user inputs
+	// Need to have analog throttle, just update throttle position for now
 	if drive.commands[CMD_FORWARD] {
-		x_velocity_delta := drive.x_acceleration * float32(deltaTime.Seconds())
-		drive.x_velocity = drive.x_velocity + x_velocity_delta
+		drive.engine.updateThrottlePosition(1.)
 	}
 	if drive.commands[CMD_BACKWARD] {
-		x_velocity_delta := drive.x_decceleration * float32(deltaTime.Seconds())
-		drive.x_velocity = drive.x_velocity - x_velocity_delta
-		drive.x_velocity = math32.Max(drive.x_velocity, 0.0)
+		drive.engine.updateThrottlePosition(0.)
+	}
+	// TODO add steering, brakes, clutch, handbrake, other car controls
+
+	// Calculate drag force
+	dragForce := drive.carBody.dragForce()
+	// Get normal force at tires
+	normalForce := drive.carBody.normalForce()
+	// Get the max amount of net torque wheels can handle before slipping
+	maxWheelTorques := make(map[int]float64)
+	for i, force := range normalForce {
+		drive.wheels[i].updateNormalForce(force)
+		maxWheelTorques[i] = drive.wheels[i].getMaxTorque()
 	}
 
+	// Get net torque through wheels
+	// Calculate engine torque at wheels
+	engineTorqueToWheels := drive.driveLine.torqueToWheels(drive.engine.getOutputTorque() * drive.transmission.currentRatio())
+	// Calculate drag torque at wheels
+	dragTorqueToWheels := make(map[int]float64)
+	dragTorqueToWheels[0] = 0.
+	dragTorqueToWheels[1] = 0.
+	dragTorqueToWheels[2] = .5 * dragForce * drive.wheels[2].getWheelRadius()
+	dragTorqueToWheels[3] = .5 * dragForce * drive.wheels[3].getWheelRadius()
+
+	for i, forceFraction := range drive.carBody.weightDist() {
+		dragTorqueToWheels[i] = forceFraction * dragForce * drive.wheels[i].getWheelRadius()
+	}
+
+	// Need separate torque vectors for engine and car side of wheel
+	// If the wheels are slipping, the drag torque isn't acting on slowing the engine down
+	// If the tires aren't slipping, then the retarding force at the wheels is the drag
+	engineNetWheelTorque := make(map[int]float64)
+	carNetWheelTorque := make(map[int]float64)
+	for i, iDragTorque := range dragTorqueToWheels {
+
+		if engineTorqueToWheels[i] > drive.wheels[i].getMaxTorque() {
+			engineNetWheelTorque[i] = engineTorqueToWheels[i] - drive.wheels[i].getSlidingTorque()
+			carNetWheelTorque[i] = drive.wheels[i].getSlidingTorque() - iDragTorque
+		} else {
+			engineNetWheelTorque[i] = engineTorqueToWheels[i] - iDragTorque
+			carNetWheelTorque[i] = engineTorqueToWheels[i] - iDragTorque
+		}
+
+	}
+
+	// Update each wheel's angular accel
+	for i := 0; i < 4; i++ {
+		drive.wheels[i].inputTorque(engineTorqueToWheels[i])
+	}
+
+	// Update engine angular accel
+	netTorque := 0.
+	for i := 0; i < 4; i++ {
+		netTorque += engineNetWheelTorque[i]
+	}
+
+	drive.engine.inputNetTorque(netTorque)
+	// Update car's linear accel
+	netForce := 0.
+
+	for i := 0; i < 4; i++ {
+		netForce += carNetWheelTorque[i] * drive.wheels[i].getWheelRadius()
+	}
+	drive.carBody.inputForce(netForce)
+
+	// Solve linear and angular differential equation
+	for i := 0; i < 4; i++ {
+		drive.wheels[i].solveODE(float64(deltaTime.Seconds()))
+	}
+	drive.engine.solveODE(deltaTime.Seconds())
+	drive.carBody.solveODE(deltaTime.Seconds())
+
 	// Calculates distance to move
-	x_dist := drive.x_velocity * float32(deltaTime.Seconds())
+	x_dist := drive.carBody.getXVelocity() * deltaTime.Seconds()
 	// Calculates wheel rotation
 	var wheelRotation = -x_dist / 0.5
 
@@ -91,15 +167,28 @@ func (drive *Drive) Update(game *game.Game, deltaTime time.Duration) {
 	direction := math32.Vector3{1, 0, 0}
 	direction.ApplyQuaternion(&quat)
 	direction.Normalize()
-	direction.MultiplyScalar(x_dist)
+	direction.MultiplyScalar(float32(x_dist))
 	// Get car world position
 	var position math32.Vector3
 	drive.model.node.WorldPosition(&position)
 	position.Add(&direction)
 	drive.model.node.SetPositionVec(&position)
+
+	// Update camera
+	var camQaut math32.Quaternion
+	game.Camera().Node.WorldQuaternion(&camQaut)
+	camDirection := math32.Vector3{1, 0, 0}
+	camDirection.ApplyQuaternion(&camQaut)
+	camDirection.Normalize()
+	camDirection.MultiplyScalar(float32(x_dist))
+	var camPosition math32.Vector3
+	game.Camera().Node.WorldPosition(&camPosition)
+	camPosition.Add(&camDirection)
+	game.Camera().Node.SetPositionVec(&camPosition)
+
 	// Rotate the wheel caps
 	for _, wcap := range drive.model.caps {
-		wcap.RotateZ(wheelRotation)
+		wcap.RotateZ(float32(wheelRotation))
 	}
 }
 
@@ -136,6 +225,7 @@ type CarModel struct {
 // Builds and returns a new car model with separate meshes
 // for the wheels, wheel caps, and car base
 func (drive *Drive) newCarModel() *CarModel {
+
 	const EPS = 0.01
 	const BASE_WIDTH = 3.0
 	const BASE_HEIGHT = 0.6
@@ -246,8 +336,10 @@ func (drive *Drive) newCarModel() *CarModel {
 
 type Engine interface {
 	updateThrottlePosition(float64)
+	getThrottlePosition() float64
 	getOutputTorque() float64
 	inputNetTorque(float64)
+	solveODE(float64)
 }
 
 type GasEngine struct {
@@ -259,20 +351,39 @@ type GasEngine struct {
 	angularPosition     float64 // Degrees
 	angularVelocity     float64 // Degrees per second
 	angularAcceleration float64 // Degrees per second squared
+	redLine             float64
 }
 
 func (gasEngine *GasEngine) updateThrottlePosition(input float64) {
 	gasEngine.throttlePosition = input
-	gasEngine.throttlePercent = input
+	if input == 0. {
+		gasEngine.throttlePercent = .05
+	} else {
+		gasEngine.throttlePercent = input
+	}
+}
+
+func (gasEngine *GasEngine) getThrottlePosition() float64 {
+	return gasEngine.throttlePosition
 }
 
 func (gasEngine *GasEngine) getOutputTorque() float64 {
 	rpm := gasEngine.angularVelocity / 6 // RPM is just angular velocity (in degrees per second) / 6
-	return gasEngine.torqueCurve[int(rpm)] * gasEngine.throttlePercent
+	pumpingLosses := 100000 * (.0046) / (2 * 3.1415 * 4) * (1. - gasEngine.throttlePercent)
+	engineOutput := gasEngine.torqueCurve[int(rpm)] * gasEngine.throttlePercent
+	return engineOutput - pumpingLosses
 }
 
 func (gasEngine *GasEngine) inputNetTorque(netTorque float64) {
 	gasEngine.angularAcceleration = netTorque / gasEngine.momentOfInertia
+}
+
+func (gasEngine *GasEngine) solveODE(time float64) {
+	gasEngine.angularVelocity += gasEngine.angularAcceleration * time
+	if gasEngine.angularVelocity >= gasEngine.redLine {
+		gasEngine.angularVelocity = gasEngine.redLine
+	}
+	gasEngine.angularPosition += gasEngine.angularVelocity * time
 }
 
 func (drive *Drive) NewGasEngine() *GasEngine {
@@ -282,6 +393,7 @@ func (drive *Drive) NewGasEngine() *GasEngine {
 	engine.angularAcceleration = 0
 	engine.angularVelocity = 0
 	engine.angularPosition = 0
+	engine.redLine = 48000.
 
 	crankInertiaCoefficient := 1.1
 	flywheelMass := 13.
@@ -303,6 +415,7 @@ func (drive *Drive) NewGasEngine() *GasEngine {
 	for i := 5001; i <= 8000; i++ {
 		engine.torqueCurve[i] = -.066*float64(i) + 733.33
 	}
+	engine.angularVelocity = 6000.
 
 	return engine
 }
@@ -395,6 +508,10 @@ func (drive *Drive) NewOpenDiff() *OpenDiff {
 type Wheel interface {
 	updateNormalForce(float64)
 	getMaxTorque() float64
+	getWheelRadius() float64
+	getSlidingTorque() float64
+	inputTorque(float64)
+	solveODE(float64)
 }
 
 type RubberWheel struct {
@@ -403,6 +520,7 @@ type RubberWheel struct {
 	// Variables
 	normalForce                  float64 // Newtons
 	frictionCoefficient          float64
+	slidingFrictionCoefficient   float64
 	rollingResistanceCoefficient float64
 	pressure                     float64 //Pascals
 	temperature                  float64 //Kelvin
@@ -419,6 +537,7 @@ func (drive *Drive) NewWheel() *RubberWheel {
 	wheel.width = .245
 	wheel.normalForce = 0.
 	wheel.frictionCoefficient = 1.
+	wheel.slidingFrictionCoefficient = .6
 	wheel.rollingResistanceCoefficient = .014
 	wheel.pressure = 220632.
 	wheel.temperature = 300.
@@ -440,9 +559,30 @@ func (wheel *RubberWheel) updateNormalForce(inputForce float64) {
 	wheel.contactPatch = wheel.width * .001
 }
 
+func (wheel *RubberWheel) getWheelRadius() float64 {
+	return wheel.radius
+}
+
+func (wheel *RubberWheel) getSlidingTorque() float64 {
+	return wheel.slidingFrictionCoefficient * wheel.normalForce * wheel.radius
+}
+
+func (wheel *RubberWheel) inputTorque(torque float64) {
+	wheel.angularAcceleration = torque / wheel.momentOfInertia
+}
+
+func (wheel *RubberWheel) solveODE(time float64) {
+	wheel.angularVelocity += wheel.angularAcceleration * time
+	wheel.angularPosition += wheel.angularVelocity * time
+}
+
 type CarBody interface {
 	dragForce() float64
 	normalForce() map[int]float64
+	weightDist() map[int]float64
+	inputForce(float64)
+	getXVelocity() float64
+	solveODE(float64)
 }
 
 type SedanBody struct {
@@ -503,4 +643,24 @@ func (carBody *SedanBody) normalForce() map[int]float64 {
 	normalForceAtWheels[2] = carBody.mass * 9.8 * carBody.weightDistribution[2]
 	normalForceAtWheels[3] = carBody.mass * 9.8 * carBody.weightDistribution[3]
 	return normalForceAtWheels
+}
+
+func (carBody *SedanBody) weightDist() map[int]float64 {
+	return carBody.weightDistribution
+}
+
+func (carBody *SedanBody) inputForce(force float64) {
+	carBody.xAcceleration = force / carBody.mass
+}
+
+func (carBody *SedanBody) getXVelocity() float64 {
+	return carBody.xVelocity
+}
+
+func (carBody *SedanBody) solveODE(time float64) {
+	carBody.xVelocity += carBody.xAcceleration * time
+	carBody.xPosition += carBody.xVelocity * time
+
+	carBody.yVelocity += carBody.yAcceleration * time
+	carBody.yPosition += carBody.yVelocity * time
 }
