@@ -1,6 +1,7 @@
 package drive
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/g3n/engine/core"
 	"github.com/g3n/engine/geometry"
 	"github.com/g3n/engine/graphic"
+	"github.com/g3n/engine/gui"
 	"github.com/g3n/engine/light"
 	"github.com/g3n/engine/material"
 	"github.com/g3n/engine/math32"
@@ -28,6 +30,7 @@ type Drive struct {
 	game         *game.Game
 	model        *CarModel // car model
 	engine       Engine
+	rpmLabel     *gui.Label
 	transmission Transmission
 	wheels       map[int]Wheel
 	driveLine    DriveLine
@@ -68,6 +71,14 @@ func (drive *Drive) Start(game *game.Game) {
 	// Creates car model
 	drive.model = drive.newCarModel()
 	game.Scene().Add(drive.model.node)
+
+	// Creates label for the RPM
+	drive.rpmLabel = gui.NewLabel(" ")
+	drive.rpmLabel.SetFontSize(20)
+	drive.rpmLabel.SetPosition(10, 10)
+	drive.rpmLabel.SetColor4(&math32.Color4{0.8, 0.8, 0.8, 1})
+	drive.rpmLabel.SetText(fmt.Sprintf("%3.1f", drive.engine.getRPM()))
+	game.GameModePanel().Add(drive.rpmLabel)
 
 	// Subscribes game to keyboard events
 	game.Subscribe(window.OnKeyDown, drive.onKey)
@@ -174,22 +185,19 @@ func (drive *Drive) Update(game *game.Game, deltaTime time.Duration) {
 	position.Add(&direction)
 	drive.model.node.SetPositionVec(&position)
 
-	// Update camera
-	var camQaut math32.Quaternion
-	game.Camera().Node.WorldQuaternion(&camQaut)
-	camDirection := math32.Vector3{1, 0, 0}
-	camDirection.ApplyQuaternion(&camQaut)
-	camDirection.Normalize()
-	camDirection.MultiplyScalar(float32(x_dist))
+	// Update camera position using the car's directional difference
 	var camPosition math32.Vector3
 	game.Camera().Node.WorldPosition(&camPosition)
-	camPosition.Add(&camDirection)
+	camPosition.Add(&direction)
 	game.Camera().Node.SetPositionVec(&camPosition)
 
 	// Rotate the wheel caps
 	for _, wcap := range drive.model.caps {
 		wcap.RotateZ(float32(wheelRotation))
 	}
+
+	drive.rpmLabel.SetText(fmt.Sprintf("%3.1f", drive.engine.getRPM()))
+
 }
 
 // Cleanup is called when a drive ends
@@ -340,6 +348,7 @@ type Engine interface {
 	getOutputTorque() float64
 	inputNetTorque(float64)
 	solveODE(float64)
+	getRPM() float64
 }
 
 type GasEngine struct {
@@ -384,6 +393,10 @@ func (gasEngine *GasEngine) solveODE(time float64) {
 		gasEngine.angularVelocity = gasEngine.redLine
 	}
 	gasEngine.angularPosition += gasEngine.angularVelocity * time
+}
+
+func (gasEngine *GasEngine) getRPM() float64 {
+	return gasEngine.angularVelocity / 6
 }
 
 func (drive *Drive) NewGasEngine() *GasEngine {

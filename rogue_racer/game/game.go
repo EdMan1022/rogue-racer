@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +12,11 @@ import (
 	"github.com/g3n/engine/camera"
 	"github.com/g3n/engine/core"
 	"github.com/g3n/engine/gls"
+	"github.com/g3n/engine/gui"
 	"github.com/g3n/engine/light"
 	"github.com/g3n/engine/math32"
 	"github.com/g3n/engine/renderer"
+	"github.com/g3n/engine/util"
 	"github.com/g3n/engine/util/logger"
 	"github.com/g3n/engine/window"
 	"github.com/kardianos/osext"
@@ -27,7 +30,13 @@ type Game struct {
 	scene       *core.Node     // Scene rendered
 	modeScene   *core.Node     // Scene populated by individual game modes
 	ambLight    *light.Ambient // Scene ambient light
-	dirData     string         // Full path of the data directory
+	frameRater  *util.FrameRater
+	dirData     string // Full path of the data directory
+
+	// GUI
+	mainPanel     *gui.Panel
+	gameModePanel *gui.Panel
+	labelFPS      *gui.Label
 
 	camera *camera.Camera
 	orbit  *camera.OrbitControl
@@ -59,6 +68,10 @@ func Create(gameMode GameMode) *Game {
 
 	game.ambLight = light.NewAmbient(&math32.Color{1.0, 1.0, 1.0}, 0.5)
 	game.scene.Add(game.ambLight)
+
+	// Create frame rater
+	game.frameRater = util.NewFrameRater(60)
+	game.buildGUI()
 
 	// Check for data directory and abort if none found
 	game.dirData = game.checkDirData("data")
@@ -129,6 +142,56 @@ func (game *Game) checkDirData(dirDataName string) string {
 	// Show error message and aborts
 	game.log.Fatal("Data directory NOT FOUND")
 	return ""
+}
+
+func (game *Game) buildGUI() {
+	width, height := game.GetSize()
+	game.mainPanel = gui.NewPanel(float32(width), float32(height))
+	dl := gui.NewDockLayout()
+	game.mainPanel.SetRenderable(false)
+	game.mainPanel.SetEnabled(false)
+	game.mainPanel.SetLayout(dl)
+	game.scene.Add(game.mainPanel)
+	gui.Manager().Set(game.mainPanel)
+
+	// Create demoPanel to house GUI elements created by the demos
+	game.gameModePanel = gui.NewPanel(0, 0)
+	game.gameModePanel.SetColor4(&gui.StyleDefault().Scroller.BgColor)
+	game.gameModePanel.SetLayoutParams(&gui.DockLayoutParams{Edge: gui.DockCenter})
+	// game.mainPanel.Add(game.gameModePanel)
+
+	// Adds header after the gui central panel to ensure that the control folder
+	// stays over the gui panel when opened.
+	headerColor := math32.Color4{13.0 / 256.0, 41.0 / 256.0, 62.0 / 256.0, 1}
+	lightTextColor := math32.Color4{0.8, 0.8, 0.8, 1}
+	header := gui.NewPanel(600, 40)
+	header.SetBorders(0, 0, 1, 0)
+	header.SetPaddings(4, 4, 4, 4)
+	header.SetColor4(&headerColor)
+	header.SetLayoutParams(&gui.DockLayoutParams{Edge: gui.DockTop})
+
+	// Horizontal box layout for the header
+	hbox := gui.NewHBoxLayout()
+	header.SetLayout(hbox)
+	game.mainPanel.Add(header)
+	const fontSize = 20
+
+	// FPS
+	if true {
+		l1 := gui.NewLabel(" ")
+		l1.SetFontSize(fontSize)
+		l1.SetLayoutParams(&gui.HBoxLayoutParams{AlignV: gui.AlignCenter})
+		l1.SetText("  FPS: ")
+		l1.SetColor4(&lightTextColor)
+		header.Add(l1)
+		// FPS value
+		game.labelFPS = gui.NewLabel(" ")
+		game.labelFPS.SetFontSize(fontSize)
+		game.labelFPS.SetLayoutParams(&gui.HBoxLayoutParams{AlignV: gui.AlignCenter})
+		game.labelFPS.SetColor4(&lightTextColor)
+		header.Add(game.labelFPS)
+	}
+
 }
 
 // setupScene resets the current scene for executing a new mode
@@ -202,6 +265,10 @@ func (game *Game) Orbit() *camera.OrbitControl {
 	return game.orbit
 }
 
+func (game *Game) GameModePanel() *gui.Panel {
+	return game.gameModePanel
+}
+
 // OnWindowResize is default handler for window resize events
 func (game *Game) OnWindowResize() {
 
@@ -222,6 +289,8 @@ func (game *Game) Run() {
 
 func (game *Game) Update(renderer *renderer.Renderer, deltaTime time.Duration) {
 
+	game.frameRater.Start()
+
 	// Clear the color, depth, and stencil buffers
 	game.Gls().Clear(gls.COLOR_BUFFER_BIT | gls.DEPTH_BUFFER_BIT | gls.STENCIL_BUFFER_BIT)
 
@@ -235,4 +304,18 @@ func (game *Game) Update(renderer *renderer.Renderer, deltaTime time.Duration) {
 	if err != nil {
 		panic(err)
 	}
+	game.frameRater.Wait()
+	game.updateFPS()
+}
+
+func (game *Game) updateFPS() {
+
+	// Get the FPS and potential FPS from the frameRater
+	fps, pfps, ok := game.frameRater.FPS(time.Duration(1000) * time.Millisecond)
+	if !ok {
+		return
+	}
+
+	// Show the FPS in the header label
+	game.labelFPS.SetText(fmt.Sprintf("%3.1f / %3.1f", fps, pfps))
 }
