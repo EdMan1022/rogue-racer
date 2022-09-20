@@ -60,7 +60,7 @@ func (drive *Drive) Start(game *game.Game) {
 
 	drive.engine = drive.NewGasEngine()
 	drive.transmission = drive.NewTransmission()
-	drive.transmission.shiftToGear(2)
+	drive.transmission.shiftToGear(1)
 	drive.wheels = make(map[int]Wheel)
 	for i := 0; i < 4; i++ {
 		drive.wheels[i] = drive.NewWheel()
@@ -75,10 +75,11 @@ func (drive *Drive) Start(game *game.Game) {
 	// Creates label for the RPM
 	drive.rpmLabel = gui.NewLabel(" ")
 	drive.rpmLabel.SetFontSize(20)
-	drive.rpmLabel.SetPosition(10, 10)
+	drive.rpmLabel.SetPosition(10, 30)
 	drive.rpmLabel.SetColor4(&math32.Color4{0.8, 0.8, 0.8, 1})
 	drive.rpmLabel.SetText(fmt.Sprintf("%3.1f", drive.engine.getRPM()))
-	game.GameModePanel().Add(drive.rpmLabel)
+	// game.GameModePanel().Add(drive.rpmLabel)
+	game.MainPanel().Add(drive.rpmLabel)
 
 	// Subscribes game to keyboard events
 	game.Subscribe(window.OnKeyDown, drive.onKey)
@@ -111,6 +112,7 @@ func (drive *Drive) Update(game *game.Game, deltaTime time.Duration) {
 
 	// Get net torque through wheels
 	// Calculate engine torque at wheels
+	//TODO Need to refactor all this, in neutral the engine should still see non-zero torque back in as input torque
 	engineTorqueToWheels := drive.driveLine.torqueToWheels(drive.engine.getOutputTorque() * drive.transmission.currentRatio())
 	// Calculate drag torque at wheels
 	dragTorqueToWheels := make(map[int]float64)
@@ -128,13 +130,18 @@ func (drive *Drive) Update(game *game.Game, deltaTime time.Duration) {
 	// If the tires aren't slipping, then the retarding force at the wheels is the drag
 	engineNetWheelTorque := make(map[int]float64)
 	carNetWheelTorque := make(map[int]float64)
+	transBackMultiply := 0.
+	if drive.transmission.currentRatio() > .005 {
+		transBackMultiply = 1. / drive.transmission.currentRatio()
+	}
+
 	for i, iDragTorque := range dragTorqueToWheels {
 
 		if engineTorqueToWheels[i] > drive.wheels[i].getMaxTorque() {
-			engineNetWheelTorque[i] = engineTorqueToWheels[i] - drive.wheels[i].getSlidingTorque()
+			engineNetWheelTorque[i] = engineTorqueToWheels[i] - drive.wheels[i].getSlidingTorque()*transBackMultiply*1./drive.driveLine.getReduction()
 			carNetWheelTorque[i] = drive.wheels[i].getSlidingTorque() - iDragTorque
 		} else {
-			engineNetWheelTorque[i] = engineTorqueToWheels[i] - iDragTorque
+			engineNetWheelTorque[i] = engineTorqueToWheels[i] - iDragTorque*transBackMultiply*1./drive.driveLine.getReduction()
 			carNetWheelTorque[i] = engineTorqueToWheels[i] - iDragTorque
 		}
 
@@ -379,6 +386,8 @@ func (gasEngine *GasEngine) getThrottlePosition() float64 {
 func (gasEngine *GasEngine) getOutputTorque() float64 {
 	rpm := gasEngine.angularVelocity / 6 // RPM is just angular velocity (in degrees per second) / 6
 	pumpingLosses := 100000 * (.0046) / (2 * 3.1415 * 4) * (1. - gasEngine.throttlePercent)
+	pumpingLosses *= (gasEngine.angularVelocity / gasEngine.redLine) // Pumping losses get larger the faster the engine is spinning
+	pumpingLosses *= 5.                                              //Arbitrary scaling factor to make car feel correct
 	engineOutput := gasEngine.torqueCurve[int(rpm)] * gasEngine.throttlePercent
 	return engineOutput - pumpingLosses
 }
@@ -490,6 +499,7 @@ func (transmission *ManualTransmission) currentRatio() float64 {
 
 type DriveLine interface {
 	torqueToWheels(float64) map[int]float64
+	getReduction() float64
 }
 
 type OpenDiff struct {
@@ -499,12 +509,15 @@ type OpenDiff struct {
 
 func (openDiff *OpenDiff) torqueToWheels(inputTorque float64) map[int]float64 {
 	outputTorqueSplit := make(map[int]float64)
-	outputTorqueSplit[0] = inputTorque * openDiff.defaultTorqueSplit[0]
-	outputTorqueSplit[1] = inputTorque * openDiff.defaultTorqueSplit[1]
-	outputTorqueSplit[2] = inputTorque * openDiff.defaultTorqueSplit[2]
-	outputTorqueSplit[3] = inputTorque * openDiff.defaultTorqueSplit[3]
+	outputTorqueSplit[0] = inputTorque * openDiff.defaultTorqueSplit[0] * openDiff.finalDriveRatio
+	outputTorqueSplit[1] = inputTorque * openDiff.defaultTorqueSplit[1] * openDiff.finalDriveRatio
+	outputTorqueSplit[2] = inputTorque * openDiff.defaultTorqueSplit[2] * openDiff.finalDriveRatio
+	outputTorqueSplit[3] = inputTorque * openDiff.defaultTorqueSplit[3] * openDiff.finalDriveRatio
 
 	return outputTorqueSplit
+}
+func (openDiff *OpenDiff) getReduction() float64 {
+	return openDiff.finalDriveRatio
 }
 
 func (drive *Drive) NewOpenDiff() *OpenDiff {

@@ -268,6 +268,9 @@ func (game *Game) Orbit() *camera.OrbitControl {
 func (game *Game) GameModePanel() *gui.Panel {
 	return game.gameModePanel
 }
+func (game *Game) MainPanel() *gui.Panel {
+	return game.mainPanel
+}
 
 // OnWindowResize is default handler for window resize events
 func (game *Game) OnWindowResize() {
